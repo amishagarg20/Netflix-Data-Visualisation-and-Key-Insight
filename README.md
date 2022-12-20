@@ -1,7 +1,7 @@
 # Netflix-Data-Visualisation-and-Key-Insight
 ---
 title: "Netflix: Data Visualisation and Key Insight"
-author: "Amisha Garg & Bhavana Bandaru"
+author: "Amisha Garg
 date: "09-12-2022"
 output: 
   html_notebook:
