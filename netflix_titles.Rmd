@@ -1,0 +1,357 @@
+---
+title: "Netflix: Data Visualisation and Key Insight"
+author: "Amisha Garg & Bhavana Bandaru"
+date: "09-12-2022"
+output: 
+  html_notebook:
+    toc: true
+    toc_depth: 3
+    theme: spacelab
+    highlight: tango
+    toc_float: true
+    collapsed: false
+---
+
+
+**To draw insights from the data using visualization techniques!**
+
+### **Dataset Attributes :**
+
+**show_id** : Unique ID for every Movie / Tv Show
+
+**type** : Identifier - A Movie or TV Show
+
+**title** : Title of the Movie / Tv Show
+
+**director** : Director of the Movie
+
+**cast** : Actors involved in the movie / show
+
+**country** : Country where the movie / show was produced
+
+**date_added** : Date it was added on Netflix
+
+**release_year** : Actual Release year of the move / show
+
+**rating** : TV Rating of the movie / show
+
+**duration** : Total Duration - in minutes or number of seasons
+
+**listed_in** : Genre
+
+**description** : The summary description
+
+### **Loading Library and Data Reading**
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(tibble)
+library(plotly)
+Netflix <- read_csv("netflix_titles.csv")
+View(Netflix)
+```
+```{r}
+head(Netflix)
+```
+
+In the data set there are 8,807 observation of 12 variables describe the Tv shows,cast,director,release year, rating and many more.
+
+### **Data cleaning**
+As a first step we can remove uninformative variables from the dataset. In our case it is a show_id varaible. The description variable will not be used for the exploratory data analysis, but can be used to find similar movies and tv shows using the text similarities.
+
+```{r}
+#drop show_id column
+Netflix = subset(Netflix, select = -c(show_id) )
+```
+
+
+### **Descriptive Summary**
+```{r}
+library(modelsummary)
+datasummary((` Type` = type) ~ N + Percent(), data = Netflix, title = "Netflix Contnet Type")
+```
+```{r}
+# Data summary for rating 
+datasummary((`Rating` = rating )~ N + Percent(), data = Netflix, title = "Rating Categories")
+```
+
+
+```{r}
+#print number of missing values for each variable
+data.frame("variable"=c(colnames(Netflix)), "missing values count"=sapply(Netflix, function(x) sum(is.na(x))), row.names=NULL)
+```
+
+From the above output we see that we have missing values for variables director, cast, country, data_added,rating and duration. Since rating is the categorical variable with 14 levels we can fill in (approximate) the missing values for rating with a mode.
+
+```{r}
+#function to find a mode
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+Netflix$rating[is.na(Netflix$rating)] <- getmode(Netflix$rating)
+```
+
+We can change the date format of the data_added varible for easier manipulations further.
+
+```{r}
+Netflix$date_added <- as.Date(Netflix$date_added, format = "%B %d, %Y")
+```
+
+The missing values for the variables director, cast and country, date_added can not be easily approximated, so for now we are going to continue without filling them. We are going to drop the missing values, at point where it will be necessary. We also drop duplicated rows in the dataset based on the title, country, type, release_year variables
+
+```{r}
+#drop duplicated rows based on the title, country, type and release_year
+Netflix=distinct(Netflix,title,country,type,release_year, .keep_all= TRUE)
+```
+
+We have done the data cleaning steps and can continue with exploring the data.
+
+### **DATA VISUALISATION**
+
+### **Amount Of Netflix by Content**
+
+```{r}
+content_by_type <- Netflix%>% group_by(type) %>% 
+  summarise(count = n())
+# In ggplot2 library, the code is created by two parts. First one is ggplot(), here we have to specify our arguments such as data, x and y axis and fill type. then continue with + and type of the graph will be added by using geom_graphytype.
+Netflix_fig1  <- ggplot(data = content_by_type, aes(x= type, y= count, fill= type))+
+  geom_bar(colour ="black", fill = "Blue" ,  stat = "identity")+
+  guides(fill= FALSE)+
+  xlab("Netflix Content by Type") + ylab("Amount of Netflix Content")+
+  ggtitle("Amount of Netflix Content By Type")
+Netflix_fig1
+```
+
+As we see from above there are more than 2 times more Movies than TV Shows on Netflix.
+
+Since many movies and tv shows are made by several countries (country variable), to correctly count the total amount of content produced by each country we need to split strings in country variable and count the total occurence of each country on its own.
+
+### **Amount of Netflix Content by Top 13 Country**
+
+```{r}
+# 1: split the countries (ex: "United States, India, South Korea, China" form to 'United States' 'India' 'South Korea' 'China') in the country column by using strsplit() function and then assign this operation to "k" for future use.
+s <- strsplit(Netflix$country, split = ", ")
+
+# 2: Created a new data frame by using data.frame() function. First column should be type = second one country=. Created type column by using rep() function. The function replicates the values in netds$type depends on the length of each element of s. we used sapply()) function. Now s is our new data in sapply().
+
+Netflix_countries_fuul <- data.frame(type = rep(Netflix$type, sapply(s, length)), country = unlist(s))
+# 3: Changed the elements of country column as character by using as.charachter() function.
+
+Netflix_countries_fuul$country <- as.character(gsub(",","",Netflix_countries_fuul$country))
+
+# 4: we created new grouped data frame by the name of amount_by_country NA.omit() function deletes the NA values on the country column/variable. Then we groupped countries and types by using group_by() function (in the "dplyr" library).
+
+amount_by_country <- na.omit(Netflix_countries_fuul) %>%
+  group_by(country, type) %>%
+  summarise(count = n())
+
+# 5: we can use the "amount_by_country" data frame to observe number of TV Show or Movie in countries. However, this list is too big to be visualized. Thus, we will create a new data frame as table to see just top 10 countries by the name of "w".
+
+w <- reshape(data=data.frame(amount_by_country),idvar="country",
+                          v.names = "count",
+                          timevar = "type",
+                          direction="wide") %>% arrange(desc(count.Movie)) %>%
+                          top_n(13)
+
+# 6: names of the second and third columns are changed by using names() function as seen below.
+
+names(w)[2] <- "number_of_movie"
+names(w)[3] <- "number_of_tv_show"
+
+# 7: In the arrange() function we sorted our count.movie columns as descending but, now, we want to change this sort depends on the total values of "number of Movies" and "number of TV Shows". To sort a data frame in R, use the order() function. By default, sorting is ASCENDING. Therefore, we have to specify as descending. + is used to specify total operation.
+
+w <- w[order(desc(w$number_of_movie +w$number_of_tv_show)),]
+
+# 8: Now we can create our graph by using ggplot2 library.
+
+library(ggplot2)
+Netflix_Fig2 <- ggplot(w, aes(number_of_movie, number_of_tv_show, colour=country))+ 
+  geom_point(size=5)+
+  xlab("Number of Movies") + ylab("Number of TV Shows")+
+  ggtitle("Amount of Netflix Content By Top 13 Country")
+ggplotly(Netflix_Fig2, dynamicTicks = T)
+
+```
+We can clearly see that United state is a clear on top in the Amount of content on Netflix. Countries as japan, South Korea, Taiwan having more TV shoes as compared to Movies.
+
+### **Amount of Netflix content By Time**
+
+```{r}
+#new_date is added to visualise the data more easy 
+
+df1 = Netflix %>% group_by(date_added) %>% summarise(added_today = n()) %>% 
+  mutate(total_number_of_content = cumsum(added_today), type = "Total")
+
+df_by_date <- df1 %>% group_by(date_added,type) %>% summarise(added_today = n()) %>% ungroup() %>% group_by(type) %>% mutate(total_number_of_content = cumsum(added_today))
+
+#Using rbind() function represents a row bind function for vectors, data frames, and matrices to be arranged as rows.
+#common = intersect(colnames(df1), colnames(df_by_date))
+#full_data<- rbind(df1[common], df_by_date[common])
+full_data <- rbind(as.data.frame(df1), as.data.frame(df_by_date))
+View(full_data)
+
+Netflix_Fig3 <- plot_ly(full_data, x = ~date_added, y = ~total_number_of_content, color = ~type, type = 'scatter', mode = 'lines', colors=c("#399ba3",  "#9addbd", "#bd3939"))
+library(ggplot2)
+
+Netflix_Fig3 <- Netflix_Fig3 %>% layout(yaxis = list(title = 'Count'), xaxis = list(title = 'Date'), title="Amout Of Content As A Function Of Time")
+Netflix_Fig3
+```
+We  notice how fast the amount of movies on Netflix overcame the amount of TV Shows.
+
+### **Amount of Content by Rating**
+```{r}
+library(plotly)
+df_by_rating_full = Netflix %>% group_by(rating) %>% summarise(count = n())
+Netflix_fig4 = plot_ly(df_by_rating_full, labels = ~rating, values = ~count, type = 'pie')
+Netflix_fig4 = Netflix_fig4 %>% layout(title = 'Amount of content of Rating', xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+Netflix_fig4
+```
+The TV-MA rating is used to create the most content. A television program that was only intended for mature audiences is given the TV-MA rating by the TV Parental Guidelines.
+
+The second-largest category is TV-14, which refers to material that can be unsuitable for minors under the age of 14.
+
+The incredibly popular R rating comes in third place. The Motion Picture Association of America determines that an R-rated film contains material that would be inappropriate for children under the age of 17; the MPAA states that "Under 17 requires accompanying parent or adult guardian."
+
+### **Amount of content Rating (Movie vs Tv shows)**
+
+```{r}
+df_by_rating_full = Netflix %>% group_by(rating,type) %>% summarise(count = n())
+names(df_by_rating_full) [1] <- "rating"
+names(df_by_rating_full) [2] <- "type"
+names(df_by_rating_full) [3] <- "content"
+newdata2 <- reshape(data=data.frame(df_by_rating_full),idvar="rating",
+                          v.names = "content",
+                          timevar = "type",
+                          direction="wide")
+names(newdata2)[2] <- "Movie"
+names(newdata2)[3] <- "TV Show"
+newdata2$`TV Show`[is.na(newdata2$`TV Show`)] <- print(0)
+# visualisation
+library(plotly)
+rating <- newdata2$rating
+Movie <- newdata2$Movie
+Tv_Show <- newdata2$`TV Show`
+Netflix_fig5 = plot_ly(newdata2, x = ~rating, y = ~Movie, type = 'bar', name = 'Movie', marker = list(color = '#bd3939'))
+Netflix_fig5 <- Netflix_fig5 %>% add_trace(y = ~Tv_Show, name = 'TV Show', marker = list(color = '#399ba3'))
+Netflix_fig5 <- Netflix_fig5 %>% layout(yaxis = list(title = 'Count'),
+                        barmode = 'stack', 
+                        title="Amount of Content By Rating (Movie vs. TV Show)")
+Netflix_fig5
+```
+
+
+### **Which countries are producing most shows**
+
+```{r}
+library(ggplot2)
+Netflix_fig6 = Netflix  %>% group_by(type)  %>% mutate(country = fct_infreq(country)) %>% ggplot(aes(x = country)) + 
+            geom_histogram(stat = 'count') + facet_wrap(~type, scales = 'free_x') + 
+            theme_bw() + coord_cartesian(xlim = c(1,10)) + scale_x_discrete(labels = function(x){str_wrap(x,20)}, breaks = function(x) {x[1:10]})
+Netflix_fig6
+
+```
+From the above we can see that :
+
+1) After United States, India is the largest source of Movies listed on Netflix.
+2) There is no India Tv Shows as much Indian Movies 
+
+
+
+
+### **Top Genres on Netflix**
+```{r}
+Netflix_generes = strsplit(Netflix$listed_in, split = ", ")
+genres_listed_in <- data.frame(type = rep(Netflix$type, sapply(Netflix_generes, length)), 
+                               listed_in = unlist(Netflix_generes))
+genres_listed_in$listed_in <- as.character(gsub(",","",genres_listed_in$listed_in))
+
+df_list  = genres_listed_in %>% 
+  group_by(type, listed_in) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% top_n(10)
+
+Netlfix_fig7 = plot_ly(df_list, x = ~listed_in, y = ~count,
+                       type = 'bar', color = ~type,
+                       colors = c("#bd3939", "#399ba3")) %>%
+  layout(xaxis = list(categoryorder = "array", 
+                      categoryarray = df_list$listed_in, 
+                      title = 'Genre',
+                      tickangle = 45), 
+         yaxis = list(title = 'Count'), 
+         title = "Top Genres (Movie vs. TV Show)", margin = list(t = 54),
+         legend = list(x = 100, y = 0.5))
+Netlfix_fig7
+```
+We observe that the most popular genre in both movies and TV shows is international content, which is followed by dramas and comedies. These are the top three categories on Netflix with the most content!
+
+
+### **How are the generes clustered**
+
+```{r}
+library(tm)
+# building corpus
+corpus <- Corpus(VectorSource(Netflix$listed_in))
+
+# create term document matrix
+tdm <- TermDocumentMatrix(corpus, 
+                          control = list(minWordLength=c(1,Inf)))
+# convert to matrix
+m <- as.matrix(tdm)
+
+# Hierarchical word clustering using dendrogram
+distance <- dist(scale(m))
+hc <- hclust(distance, method = "ward.D")
+#fviz_dend(hc, cex = 0.5, k = 4, color_labels_by_k = TRUE)
+#fviz_dend(hc, cex = 0.7, lwd = 0.5, k = 5,rect = TRUE,rect_fill = TRUE,type = "circular",ylab ="")
+#fviz_dend(hc)
+# Circular
+library(dendextend)
+#install.packages("dplyr")
+library(dplyr)
+require(factoextra)
+Circ = fviz_dend(hc, cex = 0.7, lwd = 0.5, k = 5,
+                 rect = TRUE,
+                 k_colors = c("#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"),
+                 rect_border = c("#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"),
+                 rect_fill = TRUE,
+                 type = "circular",
+                 ylab = "")
+Circ
+```
+The clusters of genres are depicted in the image below. The clusters show that family and kid-friendly movies are popular. Moreover, the largest genre cluster includes several other genres as well as thrillers, crimes, horror, and reality.
+
+### **Movie Duration in Top 12 Countries**
+
+```{r}
+movie_duration = na.omit(Netflix[Netflix$type == "Movie",][,c("country", "duration")])
+Duration<- strsplit(movie_duration$country, split = ", ")
+duration_full <- data.frame(duration = rep(movie_duration$duration,
+                                           sapply(Duration, length)),
+                            country = unlist(Duration))
+duration_full$duration <- as.numeric(gsub(" min","", duration_full$duration))
+
+duration_full_subset <- duration_full[duration_full$country %in% 
+                                        c("United States", "India", "United Kingdom",
+                                          "Canada", "France", "Japan", "Spain", "South Korea",
+                                          "Mexico", "Australia", "China", "Taiwan"),]
+
+Netflix_fig8 = plot_ly(duration_full_subset, y = ~duration, color = ~country, type = "box") %>%
+  layout(xaxis = list(title = "Country"), 
+         yaxis = list(title = 'Duration (in min)'),
+         title = "Box-Plots of Movie Duration in Top 12 Countries", margin = list(t = 54),
+         legend = list(x = 100, y = 0.5))
+Netflix_fig8
+```
+
+
+
+
+### **Conclusion**
+
+It is clear that movies play a bigger role in Netflix content based on the visualization and text analysis of the Netflix data. Additionally, the data summary and visualization showed that the United States was the sole country at the time that Netflix began donating its content, which was in 2008. Additionally, Netflix TV series and movies are rated, and these ratings are consistent for various audiences. The examination of runtime and ranting categories reveals that movies aimed towards youngsters are typically shorter.
+
+
